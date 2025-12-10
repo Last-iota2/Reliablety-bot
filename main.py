@@ -50,14 +50,35 @@ async def file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # خواندن فایل
     excel = pd.ExcelFile(filepath)
 
+    # شیت‌های موجود
+    sheets = [s.lower().strip() for s in excel.sheet_names]
+
+    # پیدا کردن شیت‌های درست
+    cvr_sheet = next((s for s in excel.sheet_names if "cvr" in s.lower()), None)
+    cvi_sheet = next((s for s in excel.sheet_names if "cvi" in s.lower()), None)
+
     outputs = {}
 
+    # ------------ CVR ------------------
     if mode in ("CVR", "هر دو"):
-        df_cvr = excel.parse("CVR")
+        if not cvr_sheet:
+            await update.message.reply_text(
+                "❌ شیت مربوط به CVR پیدا نشد.\n"
+                "اسم شیت باید شامل کلمه «CVR» باشد."
+            )
+            return
+        df_cvr = excel.parse(cvr_sheet)
         outputs["CVR"] = calculate_cvr(df_cvr)
 
+    # ------------ CVI ------------------
     if mode in ("CVI", "هر دو"):
-        df_cvi = excel.parse("CVI")
+        if not cvi_sheet:
+            await update.message.reply_text(
+                "❌ شیت مربوط به CVI پیدا نشد.\n"
+                "اسم شیت باید شامل کلمه «CVI» باشد."
+            )
+            return
+        df_cvi = excel.parse(cvi_sheet)
         outputs["CVI"] = calculate_cvi(df_cvi)
 
     # ساخت فایل خروجی
