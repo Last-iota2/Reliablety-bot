@@ -9,14 +9,14 @@ from telegram.ext import (
     ContextTypes
 )
 
-from processor import calculate_cvr, calculate_cvi
+from processor import calculate_cvr, calculate_cvi, calculate_omega
 
 TOKEN = "8201546747:AAGChpoZ8U9e1qsg0SQKvnuOhFpIAEBMq3M"
 
 user_state = {}
 
 MENU = ReplyKeyboardMarkup(
-    [["CVR", "CVI"]],
+    [["CVR", "CVI"], ["OMEGA"]],
     resize_keyboard=True
 )
 
@@ -32,7 +32,7 @@ async def choose_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     chat_id = update.effective_chat.id
 
-    if text not in ["CVR", "CVI"]:
+    if text not in ["CVR", "CVI", "OMEGA"]:
         await update.message.reply_text("فقط یکی از گزینه‌های موجود را انتخاب کن.", reply_markup=MENU)
         return
 
@@ -64,9 +64,12 @@ async def file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif mode == "CVI":
         result_df = calculate_cvi(df)
         out_name = "CVI"
-
+    elif mode == "OMEGA":
+        result_df = calculate_omega(df)
+        out_name = "OMEGA"
+        
     # تولید خروجی
-    outpath = f"/tmp/output_{chat_id}.xlsx"
+    outpath = f"/tmp/{out_name}_{chat_id}.xlsx"
     with pd.ExcelWriter(outpath, engine="openpyxl") as writer:
         result_df.to_excel(writer, sheet_name=out_name, index=False)
 

@@ -51,3 +51,24 @@ def calculate_cvi(df):
     result["CVI_Mean"] = result[["CVI_Clarity","CVI_Relevance","CVI_Simplicity"]].mean(axis=1)
 
     return result
+
+
+def calculate_omega(df):
+    """
+    df: DataFrame با ستون Item و ستون‌های R1 ... Rn (لیکرت 1 تا 5)
+    خروجی: Item + OMEGA
+    """
+    result = []
+
+    n = df.shape[1] - 1  # تعداد داورها (تعداد ستون‌های R*)
+    
+    for _, row in df.iterrows():
+        item = row["Item"]
+        ratings = row[1:]       # همه ستون‌های R*
+
+        total_score = ratings.sum()   # مجموع همه نمره‌ها
+        omega = total_score / n       # تقسیم بر تعداد داورها
+
+        result.append([item, omega])
+
+    return pd.DataFrame(result, columns=["Item", "OMEGA"])
