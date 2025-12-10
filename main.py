@@ -1,13 +1,18 @@
 import os
 import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes
+)
 
 from processor import calculate_cvr, calculate_cvi
 
 TOKEN = "8201546747:AAGChpoZ8U9e1qsg0SQKvnuOhFpIAEBMq3M"
 
-# برای مدیریت state هر چت
 user_state = {}
 
 MENU = ReplyKeyboardMarkup(
@@ -47,41 +52,27 @@ async def file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filepath = f"input_{chat_id}.xlsx"
     await file.download_to_drive(filepath)
 
-    # خواندن فایل
     excel = pd.ExcelFile(filepath)
 
-    # شیت‌های موجود
-    sheets = [s.lower().strip() for s in excel.sheet_names]
-
-    # پیدا کردن شیت‌های درست
     cvr_sheet = next((s for s in excel.sheet_names if "cvr" in s.lower()), None)
     cvi_sheet = next((s for s in excel.sheet_names if "cvi" in s.lower()), None)
 
     outputs = {}
 
-    # ------------ CVR ------------------
     if mode in ("CVR", "هر دو"):
         if not cvr_sheet:
-            await update.message.reply_text(
-                "❌ شیت مربوط به CVR پیدا نشد.\n"
-                "اسم شیت باید شامل کلمه «CVR» باشد."
-            )
+            await update.message.reply_text("❌ شیت مربوط به CVR پیدا نشد.")
             return
         df_cvr = excel.parse(cvr_sheet)
         outputs["CVR"] = calculate_cvr(df_cvr)
 
-    # ------------ CVI ------------------
     if mode in ("CVI", "هر دو"):
         if not cvi_sheet:
-            await update.message.reply_text(
-                "❌ شیت مربوط به CVI پیدا نشد.\n"
-                "اسم شیت باید شامل کلمه «CVI» باشد."
-            )
+            await update.message.reply_text("❌ شیت مربوط به CVI پیدا نشد.")
             return
         df_cvi = excel.parse(cvi_sheet)
         outputs["CVI"] = calculate_cvi(df_cvi)
 
-    # ساخت فایل خروجی
     outpath = f"output_{chat_id}.xlsx"
     with pd.ExcelWriter(outpath, engine="openpyxl") as writer:
         for name, df in outputs.items():
@@ -89,33 +80,35 @@ async def file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_document(open(outpath, "rb"))
 
-    # پاکسازی
     os.remove(filepath)
     os.remove(outpath)
 
 
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+# --- MAIN WEBHOOK RUNNER ---
+import asyncio
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, choose_mode))
-    app.add_handler(MessageHandler(filters.Document.FileExtension("xlsx"), file_received))
+async def run():
+    application = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .build()
+    )
 
-    app.run_polling()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, choose_mode))
+    application.add_handler(MessageHandler(filters.Document.FileExtension("xlsx"), file_received))
 
+    # webhook route
+    webhook_url = "https://reliablety-bot.onrender.com/webhook"
+
+    await application.initialize()
+    await application.bot.set_webhook(webhook_url)
+
+    await application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 8080)),
+        url_path="/webhook",
+    )
 
 if __name__ == "__main__":
-    import asyncio
-
-    async def run():
-        await application.initialize()
-        await application.start()
-        await application.bot.set_webhook("https://reliablety-bot.onrender.com/webhook")
-        await application.run_webhook(
-            listen="0.0.0.0",
-            port=int(os.environ.get("PORT", 8080)),
-            url_path="/webhook",
-        )
-        await application.stop()
-
     asyncio.run(run())
