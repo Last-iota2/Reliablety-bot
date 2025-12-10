@@ -105,4 +105,17 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+
+    async def run():
+        await application.initialize()
+        await application.start()
+        await application.bot.set_webhook("https://reliablety-bot.onrender.com/webhook")
+        await application.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.environ.get("PORT", 8080)),
+            url_path="/webhook",
+        )
+        await application.stop()
+
+    asyncio.run(run())
