@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 
 from processor import calculate_cvr, calculate_cvi
 
-TOKEN = "YOUR_BOT_TOKEN"
+TOKEN = "8201546747:AAGChpoZ8U9e1qsg0SQKvnuOhFpIAEBMq3M"
 
 # برای مدیریت state هر چت
 user_state = {}
