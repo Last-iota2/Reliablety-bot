@@ -16,13 +16,13 @@ TOKEN = "8201546747:AAGChpoZ8U9e1qsg0SQKvnuOhFpIAEBMq3M"
 user_state = {}
 
 MENU = ReplyKeyboardMarkup(
-    [["CVR", "CVI"], ["هر دو"]],
+    [["CVR", "CVI"]],
     resize_keyboard=True
 )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام! نوع تحلیل رو انتخاب کن:",
+        "سلام! یکی از تحلیل‌ها رو انتخاب کن:",
         reply_markup=MENU
     )
     user_state[update.effective_chat.id] = None
@@ -32,12 +32,12 @@ async def choose_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     chat_id = update.effective_chat.id
 
-    if text not in ["CVR", "CVI", "هر دو"]:
-        await update.message.reply_text("یکی از گزینه‌ها رو انتخاب کن.", reply_markup=MENU)
+    if text not in ["CVR", "CVI"]:
+        await update.message.reply_text("فقط یکی از گزینه‌های موجود را انتخاب کن.", reply_markup=MENU)
         return
 
     user_state[chat_id] = text
-    await update.message.reply_text("فایل اکسل رو ارسال کن (xlsx).")
+    await update.message.reply_text("حالا فایل اکسل را ارسال کن (xlsx).")
 
 
 async def file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -52,33 +52,29 @@ async def file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filepath = f"/tmp/input_{chat_id}.xlsx"
     await file.download_to_drive(filepath)
 
+    # خواندن فایل
     excel = pd.ExcelFile(filepath)
+    first_sheet = excel.sheet_names[0]  # شیت اول
+    df = excel.parse(first_sheet)
 
-    cvr_sheet = next((s for s in excel.sheet_names if "cvr" in s.lower()), None)
-    cvi_sheet = next((s for s in excel.sheet_names if "cvi" in s.lower()), None)
+    # پردازش
+    if mode == "CVR":
+        result_df = calculate_cvr(df)
+        out_name = "CVR"
+    elif mode == "CVI":
+        result_df = calculate_cvi(df)
+        out_name = "CVI"
 
-    outputs = {}
-
-    if mode in ("CVR", "هر دو"):
-        if not cvr_sheet:
-            await update.message.reply_text("❌ شیت CVR پیدا نشد.")
-            return
-        df_cvr = excel.parse(cvr_sheet)
-        outputs["CVR"] = calculate_cvr(df_cvr)
-
-    if mode in ("CVI", "هر دو"):
-        if not cvi_sheet:
-            await update.message.reply_text("❌ شیت CVI پیدا نشد.")
-            return
-        df_cvi = excel.parse(cvi_sheet)
-        outputs["CVI"] = calculate_cvi(df_cvi)
-
+    # تولید خروجی
     outpath = f"/tmp/output_{chat_id}.xlsx"
     with pd.ExcelWriter(outpath, engine="openpyxl") as writer:
-        for name, df in outputs.items():
-            df.to_excel(writer, sheet_name=name, index=False)
+        result_df.to_excel(writer, sheet_name=out_name, index=False)
 
     await update.message.reply_document(open(outpath, "rb"))
+
+    # پاکسازی
+    os.remove(filepath)
+    os.remove(outpath)
 
 
 def main():
@@ -95,7 +91,6 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, choose_mode))
     application.add_handler(MessageHandler(filters.Document.FileExtension("xlsx"), file_received))
 
-    # اجرای webhook بدون asyncio
     application.run_webhook(
         listen="0.0.0.0",
         port=port,
