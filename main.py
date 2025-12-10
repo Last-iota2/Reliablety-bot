@@ -11,7 +11,7 @@ from telegram.ext import (
 
 from processor import calculate_cvr, calculate_cvi
 
-TOKEN = "8201546747:AAGChpoZ8U9e1qsg0SQKvnuOhFpIAEBMq3M"
+TOKEN = "YOUR_TOKEN"
 
 user_state = {}
 
@@ -49,7 +49,7 @@ async def file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     file = await update.message.document.get_file()
-    filepath = f"input_{chat_id}.xlsx"
+    filepath = f"/tmp/input_{chat_id}.xlsx"
     await file.download_to_drive(filepath)
 
     excel = pd.ExcelFile(filepath)
@@ -61,33 +61,30 @@ async def file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if mode in ("CVR", "هر دو"):
         if not cvr_sheet:
-            await update.message.reply_text("❌ شیت مربوط به CVR پیدا نشد.")
+            await update.message.reply_text("❌ شیت CVR پیدا نشد.")
             return
         df_cvr = excel.parse(cvr_sheet)
         outputs["CVR"] = calculate_cvr(df_cvr)
 
     if mode in ("CVI", "هر دو"):
         if not cvi_sheet:
-            await update.message.reply_text("❌ شیت مربوط به CVI پیدا نشد.")
+            await update.message.reply_text("❌ شیت CVI پیدا نشد.")
             return
         df_cvi = excel.parse(cvi_sheet)
         outputs["CVI"] = calculate_cvi(df_cvi)
 
-    outpath = f"output_{chat_id}.xlsx"
+    outpath = f"/tmp/output_{chat_id}.xlsx"
     with pd.ExcelWriter(outpath, engine="openpyxl") as writer:
         for name, df in outputs.items():
             df.to_excel(writer, sheet_name=name, index=False)
 
     await update.message.reply_document(open(outpath, "rb"))
 
-    os.remove(filepath)
-    os.remove(outpath)
 
+def main():
+    port = int(os.environ.get("PORT", 8080))
+    webhook_url = "https://reliablety-bot.onrender.com/webhook"
 
-# --- MAIN WEBHOOK RUNNER ---
-import asyncio
-
-async def run():
     application = (
         ApplicationBuilder()
         .token(TOKEN)
@@ -98,17 +95,14 @@ async def run():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, choose_mode))
     application.add_handler(MessageHandler(filters.Document.FileExtension("xlsx"), file_received))
 
-    # webhook route
-    webhook_url = "https://reliablety-bot.onrender.com/webhook"
-
-    await application.initialize()
-    await application.bot.set_webhook(webhook_url)
-
-    await application.run_webhook(
+    # اجرای webhook بدون asyncio
+    application.run_webhook(
         listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 8080)),
+        port=port,
         url_path="/webhook",
+        webhook_url=webhook_url,
     )
 
+
 if __name__ == "__main__":
-    asyncio.run(run())
+    main()
