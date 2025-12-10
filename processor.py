@@ -7,12 +7,17 @@ def calculate_cvr(df):
     """
     result = []
     n = df.shape[1] - 1  # تعداد داورها
+    
     for _, row in df.iterrows():
         item = row["Item"]
-        values = row[1:]
-        ne = values.sum()
-        cvr = (ne - (n/2)) / (n/2)
+        ratings = row[1:]
+
+        # فقط تعداد امتیازهای 3 (ضروری)
+        ne = (ratings >= 3).sum()
+
+        cvr = (ne - (n / 2)) / (n / 2)
         result.append([item, cvr])
+    
     return pd.DataFrame(result, columns=["Item", "CVR"])
 
 
