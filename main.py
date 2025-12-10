@@ -11,7 +11,7 @@ from telegram.ext import (
 
 from processor import calculate_cvr, calculate_cvi
 
-TOKEN = "YOUR_TOKEN"
+TOKEN = "8201546747:AAGChpoZ8U9e1qsg0SQKvnuOhFpIAEBMq3M"
 
 user_state = {}
 
