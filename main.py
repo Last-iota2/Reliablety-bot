@@ -1,4 +1,7 @@
 import os
+import tempfile
+from pathlib import Path
+
 import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
@@ -11,7 +14,11 @@ from telegram.ext import (
 
 from processor import calculate_cvr, calculate_cvi, calculate_omega
 
-TOKEN = "8201546747:AAGChpoZ8U9e1qsg0SQKvnuOhFpIAEBMq3M"
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+
+BASE_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = BASE_DIR / "templates"
 
 user_state = {}
 
@@ -55,15 +62,16 @@ HELP_TEXT = """
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_TEXT)
     
-    # ارسال عکس/ویدیو آموزشی (اگر داری)
-    # مثال:
-    # await update.message.reply_photo(open("guide.jpg", "rb"))
-    # await update.message.reply_video(open("guide.mp4", "rb"))
-
     # ارسال فایل نمونه کلی
-    await update.message.reply_document(open("templates/template_cvr.xlsx", "rb"), caption="نمونه CVR")
-    await update.message.reply_document(open("templates/template_cvi.xlsx", "rb"), caption="نمونه CVI")
-    await update.message.reply_document(open("templates/template_omega.xlsx", "rb"), caption="نمونه OMEGA")
+    for template_name, caption in [
+        ("template_cvr.xlsx", "نمونه CVR"),
+        ("template_cvi.xlsx", "نمونه CVI"),
+        ("template_omega.xlsx", "نمونه OMEGA"),
+    ]:
+        template_path = TEMPLATES_DIR / template_name
+        if template_path.exists():
+            with open(template_path, "rb") as doc:
+                await update.message.reply_document(doc, caption=caption)
 
 async def choose_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -77,12 +85,22 @@ async def choose_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if text == "CVR":
-        await update.message.reply_document(open("templates/template_cvr.xlsx", "rb"), caption="این هم فایل نمونه CVR")
+        template_path = TEMPLATES_DIR / "template_cvr.xlsx"
+        caption = "این هم فایل نمونه CVR"
     elif text == "CVI":
-        await update.message.reply_document(open("templates/template_cvi.xlsx", "rb"), caption="این هم فایل نمونه CVI")
+        template_path = TEMPLATES_DIR / "template_cvi.xlsx"
+        caption = "این هم فایل نمونه CVI"
     elif text == "OMEGA":
-        await update.message.reply_document(open("templates/template_omega.xlsx", "rb"), caption="این هم فایل نمونه OMEGA")
-    
+        template_path = TEMPLATES_DIR / "template_omega.xlsx"
+        caption = "این هم فایل نمونه OMEGA"
+    else:
+        template_path = None
+        caption = ""
+
+    if template_path and template_path.exists():
+        with open(template_path, "rb") as doc:
+            await update.message.reply_document(doc, caption=caption)
+
     user_state[chat_id] = text
     await update.message.reply_text("حالا فایل تکمیل شده یا فایل خودت رو ارسال کن.")
 
@@ -96,40 +114,49 @@ async def file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     file = await update.message.document.get_file()
-    filepath = f"/tmp/input_{chat_id}.xlsx"
-    await file.download_to_drive(filepath)
+    tmp_dir = Path(tempfile.gettempdir())
+    filepath = tmp_dir / f"input_{chat_id}.xlsx"
+    outpath = tmp_dir / f"{mode}_{chat_id}.xlsx"
 
-    # خواندن فایل
-    excel = pd.ExcelFile(filepath)
-    first_sheet = excel.sheet_names[0]  # شیت اول
-    df = excel.parse(first_sheet)
+    try:
+        await file.download_to_drive(str(filepath))
 
-    # پردازش
-    if mode == "CVR":
-        result_df = calculate_cvr(df)
-        out_name = "CVR"
-    elif mode == "CVI":
-        result_df = calculate_cvi(df)
-        out_name = "CVI"
-    elif mode == "OMEGA":
-        result_df = calculate_omega(df)
-        out_name = "OMEGA"
+        excel = pd.ExcelFile(str(filepath))
+        first_sheet = excel.sheet_names[0]
+        df = excel.parse(first_sheet)
 
-    # تولید خروجی
-    outpath = f"/tmp/{out_name}_{chat_id}.xlsx"
-    with pd.ExcelWriter(outpath, engine="openpyxl") as writer:
-        result_df.to_excel(writer, sheet_name=out_name, index=False)
+        if mode == "CVR":
+            result_df = calculate_cvr(df)
+            out_name = "CVR"
+        elif mode == "CVI":
+            result_df = calculate_cvi(df)
+            out_name = "CVI"
+        elif mode == "OMEGA":
+            result_df = calculate_omega(df)
+            out_name = "OMEGA"
+        else:
+            await update.message.reply_text("حالت نامشخص است. لطفاً دوباره /start را بزنید.")
+            return
 
-    await update.message.reply_document(open(outpath, "rb"))
+        with pd.ExcelWriter(str(outpath), engine="openpyxl") as writer:
+            result_df.to_excel(writer, sheet_name=out_name, index=False)
 
-    # پاکسازی
-    os.remove(filepath)
-    os.remove(outpath)
+        with open(outpath, "rb") as doc:
+            await update.message.reply_document(doc)
+    finally:
+        if filepath.exists():
+            filepath.unlink()
+        if outpath.exists():
+            outpath.unlink()
 
 
 def main():
+    if not TOKEN:
+        raise RuntimeError("TELEGRAM_TOKEN environment variable is required")
+    if not WEBHOOK_URL:
+        raise RuntimeError("WEBHOOK_URL environment variable is required")
+
     port = int(os.environ.get("PORT", 8080))
-    webhook_url = "https://reliablety-bot.onrender.com/webhook"
 
     application = (
         ApplicationBuilder()
@@ -145,7 +172,7 @@ def main():
         listen="0.0.0.0",
         port=port,
         url_path="/webhook",
-        webhook_url=webhook_url,
+        webhook_url=WEBHOOK_URL,
     )
 
 
